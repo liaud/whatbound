@@ -1,0 +1,22 @@
+[package]
+name = "whatbound"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = [
+    "samples/cpu_loop",
+    "samples/sleep_loop"
+]
+
+[dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.5.53", features = ["derive"] }
+libbpf-rs = "0.25.0"
+zerocopy = "0.8.31"
+zerocopy-derive = "0.8.31"
+
+[build-dependencies]
+
+libbpf-cargo = "0.25.0"
+vmlinux = { git = "https://github.com/libbpf/vmlinux.h.git", rev = "b84eae99f7b07816767c0e22326e365325b9925f" }
