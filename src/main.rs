@@ -34,6 +34,7 @@ struct Args {
 
 #[derive(Debug, Default, Copy, Clone)]
 struct GroupAggregate {
+    count: u32,
     total_running: Duration,
     total_waiting: Duration,
     total_sleeping: Duration,
@@ -44,6 +45,7 @@ impl Add<GroupAggregate> for GroupAggregate {
 
     fn add(self, rhs: GroupAggregate) -> Self::Output {
         Self {
+            count: self.count + rhs.count,
             total_running: self.total_running + rhs.total_running,
             total_waiting: self.total_waiting + rhs.total_waiting,
             total_sleeping: self.total_sleeping + rhs.total_sleeping,
@@ -90,7 +92,7 @@ fn main() -> anyhow::Result<()> {
 
     drop(link);
 
-    println!("kind\tunit\tname\ttotal_accounted\trunning\twaiting\tsleeping");
+    println!("kind\tunit\tcount\tname\ttotal_accounted\trunning\twaiting\tsleeping");
     let mut groups: HashMap<String, GroupAggregate> = HashMap::new();
     loop {
         let entries = skel.maps.aggregates.lookup_and_delete_batch(
@@ -115,7 +117,7 @@ fn main() -> anyhow::Result<()> {
                 .replace(" ", "_");
 
             println!(
-                "entry\ts\t{}\t{:.06}\t{:.06}\t{:.06}\t{:.06}",
+                "entry\ts\t1\t{}\t{:.06}\t{:.06}\t{:.06}\t{:.06}",
                 name,
                 total_accounted.as_secs_f64(),
                 total_running.as_secs_f64(),
@@ -125,6 +127,7 @@ fn main() -> anyhow::Result<()> {
 
             let group_key = name.trim_matches(char::is_numeric).to_string();
             *groups.entry(group_key).or_default() += GroupAggregate {
+                count: 1,
                 total_running,
                 total_sleeping,
                 total_waiting,
@@ -140,7 +143,8 @@ fn main() -> anyhow::Result<()> {
         let total_accounted = group.total_running + group.total_waiting + group.total_sleeping;
 
         println!(
-            "aggregate\ts\t{}\t{:.06}\t{:.06}\t{:.06}\t{:.06}",
+            "aggregate\ts\t{}\t{}\t{:.06}\t{:.06}\t{:.06}\t{:.06}",
+            group.count,
             group_name,
             total_accounted.as_secs_f64(),
             group.total_running.as_secs_f64(),
