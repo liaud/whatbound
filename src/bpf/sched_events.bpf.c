@@ -11,6 +11,7 @@
 
 const volatile struct {
   pid_t target_tgid;
+  bool verbose;
 } args = {.target_tgid = -1};
 
 enum task_last_state {
@@ -26,6 +27,7 @@ struct switch_event {
 
 struct aggregate {
   u8 comm[16];
+
   u64 total_running;
   u64 total_waiting;
   u64 total_sleeping;
@@ -65,7 +67,11 @@ lookup_or_create_agg(struct task_struct *task) {
 
   agg = bpf_map_lookup_elem(&aggregates, &pid);
   if (agg == NULL) {
-    struct aggregate init_val = {};
+    struct aggregate init_val = {
+        .total_running = 0,
+        .total_sleeping = 0,
+        .total_waiting = 0,
+    };
     err =
         bpf_probe_read_kernel(init_val.comm, sizeof(init_val.comm), task->comm);
     if (err != 0) {
@@ -89,17 +95,25 @@ static __always_inline int task_switched_off(u64 now, struct task_struct *prev,
   struct aggregate *agg = lookup_or_create_agg(prev);
   if (agg == NULL)
     return -1;
-
   /* Accounts for the time that the task has run on the cpu. It
    * is either going to sleep or it is replaced by another task
    * and it'll run again latter.
    */
-  if (last_event->state == STATE_RUNNING) {
-    __sync_fetch_and_add(&agg->total_running, (now - last_event->start));
-  } else {
-    bpf_printk("switched off (unhandled). prev_state=%d last_event_state=%d",
+  u64 amount = (now - last_event->start);
+  if (last_event->start > 0 && last_event->state == STATE_RUNNING) {
+    __sync_fetch_and_add(&agg->total_running, amount);
+
+    if (args.verbose) {
+      bpf_printk("switched-off (ran). total=%lu amount=%lu", agg->total_running,
+                 amount);
+    }
+  } else if (last_event->start > 0) {
+    bpf_printk("switched-off (unhandled). prev_state=%d last_event_state=%d",
                prev_state, last_event->state);
+  } else if (args.verbose) {
+    bpf_printk("switched-off. previous state unknown");
   }
+
   last_event->state = task_last_state_from_state(prev_state);
   last_event->start = now;
   return 0;
@@ -115,14 +129,30 @@ static __always_inline int task_switched_in(u64 now, struct task_struct *new) {
   if (agg == NULL)
     return -1;
 
-  if (new->__state == TASK_RUNNING && last_event->state == STATE_RUNNING) {
-    __sync_fetch_and_add(&agg->total_waiting, (now - last_event->start));
-  } else if (new->__state == TASK_RUNNING &&
+  u64 amount = (now - last_event->start);
+  if (last_event->start > 0 && new->__state == TASK_RUNNING &&
+      last_event->state == STATE_RUNNING) {
+
+    __sync_fetch_and_add(&agg->total_waiting, amount);
+    if (args.verbose) {
+      bpf_printk("switched-in (waited). total=%lu amount=%lu",
+                 agg->total_waiting, amount);
+    }
+
+  } else if (last_event->start > 0 && new->__state == TASK_RUNNING &&
              last_event->state != STATE_RUNNING) {
-    __sync_fetch_and_add(&agg->total_sleeping, (now - last_event->start));
-  } else {
+
+    __sync_fetch_and_add(&agg->total_sleeping, amount);
+    if (args.verbose) {
+      bpf_printk("switched-in (slept). total=%lu amount=%lu",
+                 agg->total_sleeping, amount);
+    }
+
+  } else if (last_event->start > 0) {
     bpf_printk("switched in (unhandled). new->__state=%d last_event_state=%d",
                new->__state, last_event->state);
+  } else if (args.verbose) {
+    bpf_printk("switched-in. previous state unknown");
   }
 
   last_event->state = task_last_state_from_state(new->__state);
@@ -136,6 +166,12 @@ int BPF_PROG(handle__sched_switch, bool preempted, struct task_struct *prev,
 
   if (prev->tgid != args.target_tgid && new->tgid != args.target_tgid)
     return 0;
+
+  if (args.verbose) {
+    bpf_printk(
+        "sched_switch preempted=%d prev=%u prev_state=%u, new=%u new_state=%lu",
+        preempted, prev->pid, prev_state, new->pid, new->__state);
+  }
 
   u64 now = bpf_ktime_get_ns();
   if (prev->tgid == args.target_tgid) {
