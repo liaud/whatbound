@@ -25,6 +25,9 @@ struct Args {
     #[arg(short, long)]
     verbose: bool,
 
+    #[arg(short, long)]
+    timeout_s: f64,
+
     #[arg(long)]
     obj_build_debug: bool,
 }
@@ -83,7 +86,7 @@ fn main() -> anyhow::Result<()> {
         .attach()
         .context("attaching program");
 
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs_f64(args.timeout_s));
 
     drop(link);
 
