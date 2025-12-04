@@ -92,7 +92,7 @@ fn main() -> anyhow::Result<()> {
 
     drop(link);
 
-    println!("kind\tunit\tcount\tname\ttotal_accounted\trunning\twaiting\tsleeping");
+    println!("kind\tcount\tname\ttotal_accounted_s\trunning_s\twaiting_s\tsleeping_s");
     let mut groups: HashMap<String, GroupAggregate> = HashMap::new();
     loop {
         let entries = skel.maps.aggregates.lookup_and_delete_batch(
@@ -117,7 +117,7 @@ fn main() -> anyhow::Result<()> {
                 .replace(" ", "_");
 
             println!(
-                "entry\ts\t1\t{}\t{:.06}\t{:.06}\t{:.06}\t{:.06}",
+                "entry\t1\t{}\t{:.06}\t{:.06}\t{:.06}\t{:.06}",
                 name,
                 total_accounted.as_secs_f64(),
                 total_running.as_secs_f64(),
@@ -143,7 +143,7 @@ fn main() -> anyhow::Result<()> {
         let total_accounted = group.total_running + group.total_waiting + group.total_sleeping;
 
         println!(
-            "aggregate\ts\t{}\t{}\t{:.06}\t{:.06}\t{:.06}\t{:.06}",
+            "aggregate\t{}\t{}\t{:.06}\t{:.06}\t{:.06}\t{:.06}",
             group.count,
             group_name,
             total_accounted.as_secs_f64(),
